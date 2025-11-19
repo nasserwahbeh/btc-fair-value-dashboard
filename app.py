@@ -44,8 +44,8 @@ st.markdown("""
 # ================================
 # LOAD DATA
 # ================================
-url = 'https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv'
-df = pd.read_csv(url)
+sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
+df = pd.read_csv(sheet_url)
 
 df['time'] = pd.to_datetime(df['time'], unit='s')
 df = df.sort_values('time').set_index('time').dropna()
