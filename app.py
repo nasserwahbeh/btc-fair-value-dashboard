@@ -42,32 +42,34 @@ st.markdown("""
 
 
 # ================================
-# LOAD DATA
+# LOAD DATA (FINAL CLEAN VERSION)
 # ================================
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
 df = pd.read_csv(sheet_url)
 
-# Clean column names
-df.columns = df.columns.str.strip().str.lower()
+# Normalize column names
+df.columns = [c.strip().lower() for c in df.columns]
 
-# Fix mixed types in 'time'
-df['time'] = df['time'].astype(str)
+# Rename lag column for easier usage
+if "lag 0" in df.columns:
+    df.rename(columns={"lag 0": "m2"}, inplace=True)
 
-# If time is YYYY-MM-DD string, convert to epoch second
-df['time'] = df['time'].apply(
-    lambda x: pd.Timestamp(x).timestamp() if '-' in x else float(x)
-)
+# TIME is always UNIX epoch seconds now
+df["time"] = pd.to_numeric(df["time"], errors="coerce")
+df.dropna(subset=["time"], inplace=True)
+df["time"] = pd.to_datetime(df["time"], unit="s")
 
-df['time'] = df['time'].astype(int)
+# Set time as index & sort
+df = df.sort_values("time").set_index("time")
 
-df = df.sort_values('time').set_index('time')
-df = df.dropna()
+# Build daily dataframe
+df_daily = df[["close", "m2"]].copy()
+df_daily.dropna(inplace=True)
 
+# Logs for regression
+df_daily["log_BTC"] = np.log(df_daily["close"])
+df_daily["log_M2"] = np.log(df_daily["m2"])
 
-
-df = df.sort_values('time')
-df = df.set_index('time')
-df = df.dropna(subset=['close', 'Lag 0'])
 
 
 
