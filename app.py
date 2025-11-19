@@ -89,17 +89,15 @@ for i in range(min_training_samples, len(df_daily), update_frequency):
         continue
 
     X_poly = poly.fit_transform(train[['log_M2']].values)
-    y_train = train['log_BTC'].values
+    model = LinearRegression().fit(X_poly, train['log_BTC'].values)
 
-    model = LinearRegression().fit(X_poly, y_train)
-    preds = model.predict(X_poly)
-    residual_std = (y_train - preds).std()
+    residual_std = (train['log_BTC'].values - model.predict(X_poly)).std()
 
-    end = min(i + update_frequency, len(df_daily))
-    for j in range(i, end):
-        val = df_daily.iloc[j]['log_M2']
-        df_daily.iloc[j, df_daily.columns.get_loc('fair_value')] = np.exp(model.predict(poly.transform([[val]]))[0])
-        df_daily.iloc[j, df_daily.columns.get_loc('residual_std')] = residual_std
+    update_idx = df_daily.index[i:min(i + update_frequency, len(df_daily))]
+    df_daily.loc[update_idx, 'fair_value'] = np.exp(
+        model.predict(poly.transform(df_daily.loc[update_idx, ['log_M2']].values))
+    )
+    df_daily.loc[update_idx, 'residual_std'] = residual_std
 
 
 # ================================
