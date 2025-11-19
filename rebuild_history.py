@@ -36,24 +36,21 @@ start_date = "2017-01-01"
 # ============================
 # FETCH BTC PRICE (Daily)
 # ============================
-btc = (
-    yf.download("BTC-USD", start=start_date, interval="1d")["Close"]
-    .rename("BTC")
-)
+btc = yf.download("BTC-USD", start=start_date, interval="1d")["Close"]
+btc.name = "BTC"  # FIX
 
 # ============================
 # FETCH M2 COMPONENTS
 # ============================
-# M2
 us_m2 = fred.get_series("M2SL").rename("US_M2")
 eu_m2 = fred.get_series("MYAGM2EZM196N").rename("EU_M2")
 jp_m2 = fred.get_series("MYAGM2JPM189S").rename("JP_M2")
 cn_m2 = fred.get_series("MYAGM2CNM189N").rename("CN_M2")
 
-# FX Rates (inverse tickers from FRED)
-eurusd = (1 / fred.get_series("DEXUSEU")).rename("EURUSD")  # USD/EUR -> EUR/USD
-jpyusd = (1 / fred.get_series("DEXJPUS")).rename("JPYUSD")  # USD/JPY -> JPY/USD
-cnhusd = (1 / fred.get_series("DEXCHUS")).rename("CNHUSD")  # USD/CNH -> CNH/USD
+# FX Rates
+eurusd = (1 / fred.get_series("DEXUSEU")).rename("EURUSD")
+jpyusd = (1 / fred.get_series("DEXJPUS")).rename("JPYUSD")
+cnhusd = (1 / fred.get_series("DEXCHUS")).rename("CNHUSD")
 
 # ============================
 # ALIGN FREQUENCIES + FILL GAPS
@@ -71,7 +68,6 @@ df["Global_M2"] = (
     + df["CN_M2"] * df["CNHUSD"]
 )
 
-# Convert to trillions
 df["Global_M2_trn"] = df["Global_M2"] / 1e12
 df["US_M2_trn"] = df["US_M2"] / 1e12
 df["EU_M2_trn"] = df["EU_M2"] / 1e12
@@ -86,12 +82,10 @@ df["index"] = df["index"].dt.strftime("%Y-%m-%d")
 df = df[["index", "BTC", "Global_M2_trn", "US_M2_trn", "EU_M2_trn", "JP_M2_trn", "CN_M2_trn"]]
 
 # ============================
-# WRITE TO GOOGLE SHEET
+# WRITE ENTIRE SHEET
 # ============================
 sheet.clear()
 sheet.append_row(df.columns.tolist())
-
-values = df.values.tolist()
-sheet.append_rows(values)
+sheet.append_rows(df.values.tolist())
 
 print("Historical rebuild complete ✔")
