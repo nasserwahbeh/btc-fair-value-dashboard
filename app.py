@@ -93,8 +93,6 @@ for i in range(min_training_samples, len(df_daily), update_frequency):
     rmse = np.sqrt(mean_squared_error(y_train, preds))
     mae = mean_absolute_error(y_train, preds)
 
-    latest_error_pct = ((latest["close"] - latest["fair_value"]) / latest["fair_value"]) * 100
-
     end = min(i + update_frequency, len(df_daily))
     for j in range(i, end):
         val = df_daily.iloc[j]["log_M2"]
@@ -166,13 +164,10 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<h3 style='text-align:center; color:white;'>Model Performance Metrics</h3>", unsafe_allow_html=True)
 
-m1, m2, m3, m4, m5, m6 = st.columns(6)
+m1, m2, m3 = st.columns(3)
 m1.metric("R² Score", f"{r2:.4f}")
 m2.metric("RMSE", f"${rmse:,.0f}")
 m3.metric("MAE", f"${mae:,.0f}")
-m4.metric("Residual σ", f"{latest['residual_std']:.3f}")
-m5.metric("FV Error %", f"{latest_error_pct:.2f}%")
-m6.metric("Update Cycle", "7 Days")
 
 # ================================
 # METRIC CARDS
