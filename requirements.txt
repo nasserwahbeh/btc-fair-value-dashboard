@@ -5,3 +5,7 @@ scikit-learn
 plotly
 yfinance
 requests
+gspread
+google-auth
+google-auth-oauthlib
+fredapi
