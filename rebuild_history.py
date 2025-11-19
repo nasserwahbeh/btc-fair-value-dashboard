@@ -1,20 +1,16 @@
-import os
-import json
-from datetime import datetime
-import pandas as pd
 import yfinance as yf
-import gspread
+import pandas as pd
+from datetime import datetime
 from fredapi import Fred
+import gspread
 from google.oauth2.service_account import Credentials
+import json
+import os
 
-# === CONFIG ===
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/edit#gid=0"
-
-GCP_SERVICE_ACCOUNT = os.environ["GCP_SERVICE_ACCOUNT"]
-FRED_API_KEY = os.environ["FRED_API_KEY"]
-
-# === AUTH ===
-creds_info = json.loads(GCP_SERVICE_ACCOUNT)
+# ============================
+# GOOGLE SHEETS AUTH
+# ============================
+creds_info = json.loads(os.environ["GCP_SERVICE_ACCOUNT"])
 creds = Credentials.from_service_account_info(
     creds_info,
     scopes=[
@@ -22,60 +18,80 @@ creds = Credentials.from_service_account_info(
         "https://www.googleapis.com/auth/drive",
     ],
 )
+
 gc = gspread.authorize(creds)
-sheet = gc.open_by_url(SHEET_URL).sheet1
+SHEET_ID = "1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ"
+sheet = gc.open_by_key(SHEET_ID).sheet1
 
-fred = Fred(api_key=FRED_API_KEY)
+# ============================
+# FRED AUTH
+# ============================
+fred = Fred(api_key=os.environ["FRED_API_KEY"])
 
-# === DOWNLOAD FULL DATASETS (FROM JAN 1 2017) ===
+# ============================
+# HISTORICAL RANGE
+# ============================
 start_date = "2017-01-01"
 
-btc = yf.download("BTC-USD", start=start_date, interval="1d")["Close"]
-
-us_m2 = fred.get_series("M2SL").loc[start_date:]
-eu_m2 = fred.get_series("MYAGM2EZM196N").loc[start_date:]
-jp_m2 = fred.get_series("MYAGM2JPM189S").loc[start_date:]
-cn_m2 = fred.get_series("MYAGM2CNM189N").loc[start_date:]
-
-eurusd = fred.get_series("DEXUSEU").loc[start_date:]
-usdjpy = fred.get_series("DEXJPUS").loc[start_date:]
-usdcny = fred.get_series("DEXCHUS").loc[start_date:]
-
-# === MERGE ALL DATA ON DATE ===
-df = pd.DataFrame({
-    "US_M2": us_m2,
-    "EU_M2": eu_m2,
-    "JP_M2": jp_m2,
-    "CN_M2": cn_m2,
-    "EURUSD": eurusd,
-    "USDJPY": usdjpy,
-    "USDCNY": usdcny
-}).ffill()
-
-# === CONVERT TO TRILLIONS USD ===
-df["US_M2_trn"] = df["US_M2"] / 1e3
-df["EU_M2_trn"] = (df["EU_M2"] * df["EURUSD"]) / 1e12
-df["JP_M2_trn"] = (df["JP_M2"] / df["USDJPY"]) / 1e12
-df["CN_M2_trn"] = (df["CN_M2"] / df["USDCNY"]) / 1e12
-
-df["Global_M2_trn"] = (
-    df["US_M2_trn"]
-    + df["EU_M2_trn"]
-    + df["JP_M2_trn"]
-    + df["CN_M2_trn"]
+# ============================
+# FETCH BTC PRICE (Daily)
+# ============================
+btc = (
+    yf.download("BTC-USD", start=start_date, interval="1d")["Close"]
+    .rename("BTC")
 )
 
-# === MERGE BTC PRICES ===
-df = df.merge(btc, left_index=True, right_index=True, how="left").ffill()
-df.rename(columns={"Close": "BTC"}, inplace=True)
+# ============================
+# FETCH M2 COMPONENTS
+# ============================
+# M2
+us_m2 = fred.get_series("M2SL").rename("US_M2")
+eu_m2 = fred.get_series("MYAGM2EZM196N").rename("EU_M2")
+jp_m2 = fred.get_series("MYAGM2JPM189S").rename("JP_M2")
+cn_m2 = fred.get_series("MYAGM2CNM189N").rename("CN_M2")
 
-df = df[["BTC", "Global_M2_trn", "US_M2_trn", "EU_M2_trn", "JP_M2_trn", "CN_M2_trn"]]
+# FX Rates (inverse tickers from FRED)
+eurusd = (1 / fred.get_series("DEXUSEU")).rename("EURUSD")  # USD/EUR -> EUR/USD
+jpyusd = (1 / fred.get_series("DEXJPUS")).rename("JPYUSD")  # USD/JPY -> JPY/USD
+cnhusd = (1 / fred.get_series("DEXCHUS")).rename("CNHUSD")  # USD/CNH -> CNH/USD
 
-df.reset_index(inplace=True)
-df.rename(columns={"index": "Date"}, inplace=True)
+# ============================
+# ALIGN FREQUENCIES + FILL GAPS
+# ============================
+df = pd.concat([btc, us_m2, eu_m2, jp_m2, cn_m2, eurusd, jpyusd, cnhusd], axis=1)
+df = df.ffill().bfill()
 
-# === WRITE TO GOOGLE SHEET (REPLACE EVERYTHING) ===
+# ============================
+# Compute Global M2 Liquidity
+# ============================
+df["Global_M2"] = (
+    df["US_M2"]
+    + df["EU_M2"] * df["EURUSD"]
+    + df["JP_M2"] * df["JPYUSD"]
+    + df["CN_M2"] * df["CNHUSD"]
+)
+
+# Convert to trillions
+df["Global_M2_trn"] = df["Global_M2"] / 1e12
+df["US_M2_trn"] = df["US_M2"] / 1e12
+df["EU_M2_trn"] = df["EU_M2"] / 1e12
+df["JP_M2_trn"] = df["JP_M2"] / 1e12
+df["CN_M2_trn"] = df["CN_M2"] / 1e12
+
+# ============================
+# FINAL EXPORT FORMAT
+# ============================
+df = df.reset_index()
+df["index"] = df["index"].dt.strftime("%Y-%m-%d")
+df = df[["index", "BTC", "Global_M2_trn", "US_M2_trn", "EU_M2_trn", "JP_M2_trn", "CN_M2_trn"]]
+
+# ============================
+# WRITE TO GOOGLE SHEET
+# ============================
 sheet.clear()
-sheet.update([df.columns.tolist()] + df.values.tolist())
+sheet.append_row(df.columns.tolist())
 
-print("Historical rebuild complete! Starting from 2017-01-01")
+values = df.values.tolist()
+sheet.append_rows(values)
+
+print("Historical rebuild complete ✔")
