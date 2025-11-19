@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # ======================================
 # STREAMLIT CONFIG
@@ -37,17 +37,10 @@ st.markdown("""
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
 df = pd.read_csv(sheet_url)
 
-# Strip whitespace from column names
 df.columns = df.columns.str.strip()
-
-# Convert time properly (UNIX seconds)
 df["time"] = pd.to_datetime(df["time"], unit="s", errors="coerce")
-
-# Drop invalid rows
 df = df.dropna(subset=["time", "close", "Lag 0"])
 df = df.sort_values("time").set_index("time")
-
-# Rename M2 column for readability
 df = df.rename(columns={"Lag 0": "M2"})
 
 # ======================================
@@ -55,8 +48,6 @@ df = df.rename(columns={"Lag 0": "M2"})
 # ======================================
 df["log_BTC"] = np.log(df["close"])
 df["log_M2"] = np.log(df["M2"])
-
-# MODEL STORAGE
 df["fair_value"] = np.nan
 df["residual_std"] = np.nan
 
@@ -65,11 +56,10 @@ update_frequency = 7
 poly = PolynomialFeatures(degree=2)
 
 # ======================================
-# REGRESSION LOOP
+# REGRESSION + FAIR VALUE MODEL
 # ======================================
 for i in range(min_training_samples, len(df), update_frequency):
     train = df.iloc[:i][["log_BTC", "log_M2"]].dropna()
-
     if len(train) < min_training_samples:
         continue
 
@@ -80,24 +70,19 @@ for i in range(min_training_samples, len(df), update_frequency):
     preds = model.predict(X_poly)
     residual_std = (y_train - preds).std()
 
-    # Prevent model collapse blowing up values
     if residual_std < 1e-4:
         residual_std = 1e-4
 
     end = min(i + update_frequency, len(df))
-
     for j in range(i, end):
         val = df.iloc[j]["log_M2"]
         fv = np.exp(model.predict(poly.transform([[val]]))[0])
-
-        # Clip values to prevent exponential blowups
         fv = np.clip(fv, 1, 1_000_000)
-
         df.iloc[j, df.columns.get_loc("fair_value")] = fv
         df.iloc[j, df.columns.get_loc("residual_std")] = residual_std
 
 # ======================================
-# BANDS + Z-SCORE
+# Z-SCORE & BANDS
 # ======================================
 df["fair_value_log"] = np.log(df["fair_value"])
 df["upper_1std"] = np.exp(df["fair_value_log"] + df["residual_std"])
@@ -123,30 +108,28 @@ with colA:
 df_zoom = df_plot.last(f"{display_years}Y")
 
 # ======================================
-# MAIN CHART
+# MAIN PRICE + FAIR VALUE CHART
 # ======================================
 fig = go.Figure()
 
-# ±2σ shading
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["upper_2std"], line=dict(width=0), showlegend=False))
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["lower_2std"], fill="tonexty",
                          fillcolor="rgba(212,175,55,0.07)", line=dict(width=0), name="±2σ"))
-
-# ±1σ shading
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["upper_1std"], line=dict(width=0), showlegend=False))
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["lower_1std"], fill="tonexty",
                          fillcolor="rgba(212,175,55,0.17)", line=dict(width=0), name="±1σ"))
 
-# Bitcoin price
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["close"], name="Bitcoin Price",
                          line=dict(color="white", width=2.5)))
-
-# Fair value
 fig.add_trace(go.Scatter(x=df_zoom.index, y=df_zoom["fair_value"], name="Fair Value",
                          line=dict(color="#D4AF37", width=3.5)))
 
-fig.update_layout(template="plotly_dark", paper_bgcolor="#0d0d0d", plot_bgcolor="#0d0d0d",
-                  font=dict(color="white", size=14), margin=dict(l=30,r=30,t=10,b=10), height=520)
+fig.update_layout(
+    template="plotly_dark",
+    paper_bgcolor="#0d0d0d", plot_bgcolor="#0d0d0d",
+    font=dict(color="white", size=14),
+    margin=dict(l=30,r=30,t=10,b=10),
+    height=520)
 
 fig.update_yaxes(type="log",
                  gridcolor="rgba(255,255,255,0.08)")
@@ -160,3 +143,46 @@ m1, m2, m3 = st.columns(3)
 m1.markdown(f"<div class='metric-card'>BTC Price<br><div class='metric-value'>${latest['close']:,.0f}</div></div>", unsafe_allow_html=True)
 m2.markdown(f"<div class='metric-card'>Fair Value<br><div class='metric-value'>${latest['fair_value']:,.0f}</div></div>", unsafe_allow_html=True)
 m3.markdown(f"<div class='metric-card'>Z-Score<br><div class='metric-value'>{latest['z_score']:.2f}σ</div></div>", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ======================================
+# Z-SCORE OSCILLATOR
+# ======================================
+st.markdown("<h2 style='text-align:center; color:white;'>Z-Score Oscillator (Deviation from Fair Value)</h2>",
+            unsafe_allow_html=True)
+
+osc = go.Figure()
+osc.add_hline(y=0, line=dict(color="white", width=1))
+osc.add_hline(y=1, line=dict(color="#D4AF37", width=1, dash="dot"))
+osc.add_hline(y=-1, line=dict(color="#D4AF37", width=1, dash="dot"))
+osc.add_hline(y=2, line=dict(color="red", width=1, dash="dot"))
+osc.add_hline(y=-2, line=dict(color="red", width=1, dash="dot"))
+
+z = df_zoom["z_score"].values
+times = df_zoom.index
+
+for i in range(len(z)-1):
+    osc.add_trace(go.Scatter(
+        x=[times[i], times[i+1]],
+        y=[z[i], z[i+1]],
+        mode="lines",
+        line=dict(
+            width=3,
+            color="#00ff88" if z[i] <= -2 else
+                  "#66ffbb" if z[i] <= -1 else
+                  "#ffffff" if z[i] <= 1 else
+                  "#ffb347" if z[i] <= 2 else
+                  "#ff0055"
+        ),
+        showlegend=False
+    ))
+
+osc.update_layout(
+    template="plotly_dark",
+    paper_bgcolor="#0d0d0d", plot_bgcolor="#0d0d0d",
+    font=dict(color="white"), height=300,
+    margin=dict(l=20, r=20, t=10, b=20)
+)
+
+st.plotly_chart(osc, use_container_width=True)
