@@ -47,7 +47,7 @@ st.markdown("""
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
 df = pd.read_csv(sheet_url)
 
-df['time'] = pd.to_datetime(df['time'])
+df['time'] = pd.to_datetime(df['time'], format='%Y-%m-%d')
 df = df.sort_values('time').set_index('time').dropna()
 
 df_daily = df[['close', 'Lag 0']].copy().dropna()
