@@ -81,10 +81,10 @@ cnhusd = 1.0 / dexchus if dexchus != 0 else 0.0
 # ==========================
 synthetic_m2_trillions = (
     us_m2
-    + eu_m2 * eurusd
-    + jp_m2 * jpyusd
-    + cn_m2 * cnhusd
-) / 1e12
+    + (eu_m2 * eurusd)
+    + (jp_m2 * jpyusd)
+    + (cn_m2 * cnhusd)
+) / 1000000000000
 
 # ==========================
 # APPEND ROW TO SHEET
