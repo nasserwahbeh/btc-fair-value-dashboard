@@ -47,23 +47,22 @@ st.markdown("""
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
 df = pd.read_csv(sheet_url)
 
-# DEBUG PRINT
-st.write("COLUMNS:", list(df.columns))
-
 # Clean column names
-df.columns = df.columns.str.replace('\ufeff', '', regex=True).str.strip().str.lower()
+df.columns = df.columns.str.strip().str.lower()
 
-st.write("CLEANED COLUMNS:", list(df.columns))
-st.write(df.head())
-st.write(df.tail())
+# Fix mixed types in 'time'
+df['time'] = df['time'].astype(str)
 
-if 'time' not in df.columns:
-    st.error("NO 'time' COLUMN FOUND. Available columns shown above.")
-    st.stop()
+# If time is YYYY-MM-DD string, convert to epoch second
+df['time'] = df['time'].apply(
+    lambda x: pd.Timestamp(x).timestamp() if '-' in x else float(x)
+)
 
-# Convert time safely
-df['time'] = pd.to_datetime(df['time'], errors='coerce')
-df = df.dropna(subset=['time']).sort_values('time').set_index('time')
+df['time'] = df['time'].astype(int)
+
+df = df.sort_values('time').set_index('time')
+df = df.dropna()
+
 
 
 df = df.sort_values('time')
