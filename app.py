@@ -48,7 +48,9 @@ sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc
 df = pd.read_csv(sheet_url)
 
 # Convert time correctly ("YYYY-MM-DD" format coming from webhook)
-df['time'] = pd.to_datetime(df['time'], errors='coerce')
+# Convert time column (handle Unix timestamps AND YYYY-MM-DD)
+df['time'] = df['time'].apply(lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x))
+
 df = df.sort_values('time').set_index('time').dropna()
 
 df_daily = df[['close', 'Lag 0']].copy().dropna()
