@@ -4,7 +4,6 @@ import numpy as np
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -75,6 +74,8 @@ poly = PolynomialFeatures(degree=2)
 df_daily["fair_value"] = np.nan
 df_daily["residual_std"] = np.nan
 
+current_r2 = np.nan
+
 for i in range(min_training_samples, len(df_daily), update_frequency):
     train = df_daily.iloc[:i][["log_BTC", "log_M2"]].dropna()
     if len(train) < min_training_samples:
@@ -83,15 +84,9 @@ for i in range(min_training_samples, len(df_daily), update_frequency):
     X_poly = poly.fit_transform(train[["log_M2"]].values)
     y_train = train["log_BTC"].values
 
-    model = LinearRegression().fit(X_poly, y_train)
-    preds = model.predict(X_poly)
-    
-    residual_std = (y_train - preds).std()
-
-
-    r2 = r2_score(y_train, preds)
-    rmse = np.sqrt(mean_squared_error(y_train, preds))
-    mae = mean_absolute_error(y_train, preds)
+    # R² score tracking
+    r2 = model.score(X_poly, y_train)
+    current_r2 = r2
 
     end = min(i + update_frequency, len(df_daily))
     for j in range(i, end):
@@ -111,6 +106,8 @@ df_daily["z_score"] = (df_daily["log_BTC"] - df_daily["fair_log"]) / df_daily["r
 
 df_plot = df_daily[df_daily["fair_value"].notna()]
 latest = df_plot.iloc[-1]
+last_updated = latest.name.strftime("%Y-%m-%d %H:%M UTC")
+
 
 # ================================
 # TITLE + SLIDER
@@ -159,15 +156,15 @@ fig.update_yaxes(
     gridcolor="rgba(255,255,255,0.08)"
 )
 
+top_left, spacer, top_right = st.columns([3,6,3])
+
+with top_left:
+    st.markdown(f"<p style='color:#888; font-size:16px;'>Last Updated: <b>{last_updated}</b></p>", unsafe_allow_html=True)
+
+with top_right:
+    st.markdown(f"<p style='text-align:right; color:#888; font-size:16px;'>R² Score: <b>{current_r2:.3f}</b></p>", unsafe_allow_html=True)
+
 st.plotly_chart(fig, use_container_width=True)
-
-
-st.markdown("<h3 style='text-align:center; color:white;'>Model Performance Metrics</h3>", unsafe_allow_html=True)
-
-m1, m2, m3 = st.columns(3)
-m1.metric("R² Score", f"{r2:.4f}")
-m2.metric("RMSE", f"${rmse:,.0f}")
-m3.metric("MAE", f"${mae:,.0f}")
 
 # ================================
 # METRIC CARDS
