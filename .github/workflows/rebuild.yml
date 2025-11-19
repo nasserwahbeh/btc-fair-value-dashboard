@@ -1,0 +1,27 @@
+name: Rebuild Historical Data (Manual Only)
+
+on:
+  workflow_dispatch:  # Run manually only
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas yfinance gspread google-auth google-auth-oauthlib google-auth-httplib2 fredapi
+
+      - name: Run rebuild script
+        env:
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: python rebuild_history.py
