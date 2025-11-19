@@ -45,23 +45,25 @@ st.markdown("""
 # LOAD DATA
 # ================================
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
-
 df = pd.read_csv(sheet_url)
 
-# Normalize column names and remove hidden BOM characters
-df.columns = df.columns.str.strip().str.replace('\ufeff', '', regex=True)
+# DEBUG PRINT
+st.write("COLUMNS:", list(df.columns))
 
-# Ensure the 'time' column exists and is correctly parsed
+# Clean column names
+df.columns = df.columns.str.replace('\ufeff', '', regex=True).str.strip().str.lower()
+
+st.write("CLEANED COLUMNS:", list(df.columns))
+st.write(df.head())
+st.write(df.tail())
+
 if 'time' not in df.columns:
-    st.error(f"Available columns: {df.columns.tolist()}")
+    st.error("NO 'time' COLUMN FOUND. Available columns shown above.")
     st.stop()
 
-df['time'] = df['time'].apply(
-    lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x)
-)
-
-df = df.sort_values('time').set_index('time').dropna()
-
+# Convert time safely
+df['time'] = pd.to_datetime(df['time'], errors='coerce')
+df = df.dropna(subset=['time']).sort_values('time').set_index('time')
 
 
 df = df.sort_values('time')
