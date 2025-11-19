@@ -93,7 +93,7 @@ for i in range(min_training_samples, len(df_daily), update_frequency):
     rmse = np.sqrt(mean_squared_error(y_train, preds))
     mae = mean_absolute_error(y_train, preds)
 
-latest_error_pct = ((latest["close"] - latest["fair_value"]) / latest["fair_value"]) * 100
+    latest_error_pct = ((latest["close"] - latest["fair_value"]) / latest["fair_value"]) * 100
 
     end = min(i + update_frequency, len(df_daily))
     for j in range(i, end):
