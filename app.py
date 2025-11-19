@@ -47,11 +47,17 @@ st.markdown("""
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
 df = pd.read_csv(sheet_url)
 
-# Convert time correctly ("YYYY-MM-DD" format coming from webhook)
-# Convert time column (handle Unix timestamps AND YYYY-MM-DD)
-df['time'] = df['time'].apply(lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x))
 
-df = df.sort_values('time').set_index('time').dropna()
+# Convert time column (handles Unix + ISO format)
+df['time'] = df['time'].apply(
+    lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x)
+)
+
+# Sort AFTER conversion
+df = df.sort_values('time').set_index('time')
+df = df.dropna()
+
+
 
 df_daily = df[['close', 'Lag 0']].copy().dropna()
 df_daily['log_BTC'] = np.log(df_daily['close'])
