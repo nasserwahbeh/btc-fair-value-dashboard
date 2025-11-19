@@ -3,14 +3,13 @@ import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-from fredapi import Fred
 import json
 import os
-import numpy as np
+from fredapi import Fred
 
-# ================================
-# GOOGLE AUTH
-# ================================
+# ============================
+# GOOGLE SHEETS AUTH
+# ============================
 creds_info = json.loads(os.environ["GCP_SERVICE_ACCOUNT"])
 creds = Credentials.from_service_account_info(
     creds_info,
@@ -25,42 +24,57 @@ gc = gspread.authorize(creds)
 SHEET_ID = "1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ"
 sheet = gc.open_by_key(SHEET_ID).sheet1
 
-# ================================
-# API KEYS
-# ================================
-fred = Fred(api_key=os.environ["FRED_API_KEY"])
+# ============================
+# FRED API
+# ============================
+fred_api_key = os.environ["FRED_API_KEY"]
+fred = Fred(api_key=fred_api_key)
 
-# ================================
-# FETCH BTC CLOSE
-# ================================
+def safe_fred(series_id):
+    """Fetch latest value from FRED safely with fill-forward."""
+    try:
+        data = fred.get_series(series_id).ffill()
+        return float(data.iloc[-1])
+    except Exception as e:
+        print(f"Error fetching {series_id}: {e}")
+        return 0.0
+
+# ============================
+# FETCH BTC PRICE
+# ============================
 btc = yf.download("BTC-USD", period="7d", interval="1d")["Close"].ffill().iloc[-1]
 
-# ================================
-# FETCH M2 COMPONENTS
-# (Daily data may contain NaN → forward fill)
-# ================================
-us_m2 = fred.get_series("M2SL").ffill().iloc[-1]        # USA
-eu_m2 = fred.get_series("M2REAL")[-1] if "M2REAL" in fred.series else 0  # Placeholder EU M2 if no exact series
-jp_m2 = fred.get_series("BOJMBASEW").ffill().iloc[-1]  # Japan Monetary base weekly
-cn_m2 = fred.get_series("MABMM201S")[-1] if "MABMM201S" in fred.series else 0  # China M2 (placeholder)
+# ============================
+# FETCH GLOBAL M2 COMPONENTS
+# ============================
+us_m2 = safe_fred("M2SL")                   # US
+eu_m2 = safe_fred("MYAGM2EZM196N")          # Euro Area
+jp_m2 = safe_fred("MYAGM2JPM189S")          # Japan
+cn_m2 = safe_fred("MYAGM2CNM189N")          # China
 
-# ================================
-# FX RATES
-# ================================
-eurusd = yf.download("EURUSD=X", period="7d", interval="1d")["Close"].ffill().iloc[-1]
-usdjpy = yf.download("JPY=X", period="7d", interval="1d")["Close"].ffill().iloc[-1]
-usd_cnh = yf.download("CNH=X", period="7d", interval="1d")["Close"].ffill().iloc[-1]
+# ============================
+# FETCH FX RATES FROM FRED
+# ============================
+usd_per_eur = safe_fred("CCUSMA02EZM618N")  # USD per EUR
+usd_per_jpy = safe_fred("CCUSMA02JPM618N")  # USD per JPY
+usd_per_cnh = safe_fred("CCUSMA02CNM618N")  # USD per CNH
 
-# ================================
-# SYNTHETIC GLOBAL M2 FORMULA
-# ================================
-synthetic_m2 = (us_m2 + eu_m2 * eurusd + jp_m2 / usdjpy + cn_m2 / usd_cnh) / 1e12
+# Convert FX into typical price format
+eurusd = 1 / usd_per_eur if usd_per_eur else 0  # EURUSD
+usdjpy = usd_per_jpy if usd_per_jpy else 0       # USDJPY (already correct)
+usdcnh = usd_per_cnh if usd_per_cnh else 0       # USDCNH (already correct)
 
-# ================================
-# APPEND ROW TO SHEET
-# ================================
-today = datetime.now().strftime("%Y-%m-%d")
-row = [today, float(btc), float(synthetic_m2)]
+# ============================
+# SYNTHETIC GLOBAL LIQUIDITY M2
+# ============================
+synthetic_m2 = (us_m2 + eu_m2 * eurusd + jp_m2 / usdjpy + cn_m2 / usdcnh) / 1e12
+
+# ============================
+# APPEND TO GOOGLE SHEET
+# ============================
+now = datetime.now().strftime("%Y-%m-%d")
+row = [now, float(btc), float(synthetic_m2)]
 
 sheet.append_row(row)
-print("Updated successfully")
+
+print("SUCCESS: Google Sheet updated with BTC + Synthetic M2")
