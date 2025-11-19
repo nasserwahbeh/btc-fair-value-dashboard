@@ -48,13 +48,20 @@ sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc
 
 df = pd.read_csv(sheet_url)
 
-# Convert timestamps that are numeric vs YYYY-MM-DD strings
+# Normalize column names and remove hidden BOM characters
+df.columns = df.columns.str.strip().str.replace('\ufeff', '', regex=True)
+
+# Ensure the 'time' column exists and is correctly parsed
+if 'time' not in df.columns:
+    st.error(f"Available columns: {df.columns.tolist()}")
+    st.stop()
+
 df['time'] = df['time'].apply(
     lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x)
 )
 
-df = df.sort_values('time').set_index('time')
-df = df.dropna()
+df = df.sort_values('time').set_index('time').dropna()
+
 
 
 df = df.sort_values('time')
