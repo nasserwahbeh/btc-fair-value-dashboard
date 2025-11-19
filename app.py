@@ -45,23 +45,26 @@ st.markdown("""
 # LOAD DATA
 # ================================
 sheet_url = "https://docs.google.com/spreadsheets/d/1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ/export?format=csv"
+
+
+# ================================
+# LOAD & CLEAN DATA
+# ================================
 df = pd.read_csv(sheet_url)
 
+def convert_time(x):
+    s = str(x)
+    if s.isdigit():  # unix seconds
+        return pd.to_datetime(int(s), unit='s')
+    else:            # already a date
+        return pd.to_datetime(s, format='%Y-%m-%d')
 
-# Convert time column (handles Unix + ISO format)
-df['time'] = df['time'].apply(
-    lambda x: pd.to_datetime(x, unit='s') if str(x).isdigit() else pd.to_datetime(x)
-)
+df['time'] = df['time'].apply(convert_time)
 
-# Sort AFTER conversion
-df = df.sort_values('time').set_index('time')
-df = df.dropna()
+df = df.sort_values('time')
+df = df.set_index('time')
+df = df.dropna(subset=['close', 'Lag 0'])
 
-
-
-df_daily = df[['close', 'Lag 0']].copy().dropna()
-df_daily['log_BTC'] = np.log(df_daily['close'])
-df_daily['log_M2'] = np.log(df_daily['Lag 0'])
 
 
 # ================================
