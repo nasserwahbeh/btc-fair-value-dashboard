@@ -109,7 +109,7 @@ latest = df_plot.iloc[-1]
 # TITLE + SLIDER
 # ================================
 st.markdown("<h1 style='text-align:center; color:white;'>ML Bitcoin Fair Value Model</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align:center; color:#999;'>Machine Learning fair value analysis via M2 Money Supply Polynomial Regression</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align:center; color:#999;'>Machine Learning Fair Value Analysis Via M2 Money Supply Polynomial Regression</h3>", unsafe_allow_html=True)
 
 colA, colB, colC = st.columns([2,6,2])
 with colA:
