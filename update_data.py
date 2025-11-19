@@ -1,15 +1,17 @@
-import yfinance as yf
-import pandas as pd
+# update_data.py
+
+import os
+import json
 from datetime import datetime
+
+import yfinance as yf
+from fredapi import Fred
 import gspread
 from google.oauth2.service_account import Credentials
-import json
-import os
-from fredapi import Fred
 
-# ============================
-# GOOGLE SHEETS AUTH
-# ============================
+# ==========================
+# GOOGLE AUTH
+# ==========================
 creds_info = json.loads(os.environ["GCP_SERVICE_ACCOUNT"])
 creds = Credentials.from_service_account_info(
     creds_info,
@@ -18,63 +20,80 @@ creds = Credentials.from_service_account_info(
         "https://www.googleapis.com/auth/drive",
     ],
 )
-
 gc = gspread.authorize(creds)
 
 SHEET_ID = "1QkEUXSVxPqBgEhNxtoKY7sra5yc1515WqydeFSg7ibQ"
 sheet = gc.open_by_key(SHEET_ID).sheet1
 
-# ============================
-# FRED API
-# ============================
-fred_api_key = os.environ["FRED_API_KEY"]
-fred = Fred(api_key=fred_api_key)
+# ==========================
+# FRED AUTH
+# ==========================
+fred = Fred(api_key=os.environ["FRED_API_KEY"])
 
-def safe_fred(series_id):
-    """Fetch latest value from FRED safely with fill-forward."""
-    try:
-        data = fred.get_series(series_id).ffill()
-        return float(data.iloc[-1])
-    except Exception as e:
-        print(f"Error fetching {series_id}: {e}")
-        return 0.0
 
-# ============================
-# FETCH BTC PRICE
-# ============================
-btc = yf.download("BTC-USD", period="7d", interval="1d")["Close"].ffill().iloc[-1]
+def last_value(series_id: str) -> float:
+    """Get latest available value from a FRED series."""
+    s = fred.get_series(series_id)
+    s = s.dropna()
+    return float(s.iloc[-1])
 
-# ============================
-# FETCH GLOBAL M2 COMPONENTS
-# ============================
-us_m2 = safe_fred("M2SL")                   # US
-eu_m2 = safe_fred("MYAGM2EZM196N")          # Euro Area
-jp_m2 = safe_fred("MYAGM2JPM189S")          # Japan
-cn_m2 = safe_fred("MYAGM2CNM189N")          # China
 
-# ============================
-# FETCH FX RATES FROM FRED
-# ============================
-usd_per_eur = safe_fred("CCUSMA02EZM618N")  # USD per EUR
-usd_per_jpy = safe_fred("CCUSMA02JPM618N")  # USD per JPY
-usd_per_cnh = safe_fred("CCUSMA02CNM618N")  # USD per CNH
+# ==========================
+# FETCH BTC (daily close)
+# ==========================
+btc_df = yf.download("BTC-USD", period="7d", interval="1d")
+btc_close = float(btc_df["Close"].ffill().iloc[-1])
 
-# Convert FX into typical price format
-eurusd = 1 / usd_per_eur if usd_per_eur else 0  # EURUSD
-usdjpy = usd_per_jpy if usd_per_jpy else 0       # USDJPY (already correct)
-usdcnh = usd_per_cnh if usd_per_cnh else 0       # USDCNH (already correct)
+# ==========================
+# FETCH M2 LEVELS (monthly)
+# ==========================
 
-# ============================
-# SYNTHETIC GLOBAL LIQUIDITY M2
-# ============================
-synthetic_m2 = (us_m2 + eu_m2 * eurusd + jp_m2 / usdjpy + cn_m2 / usdcnh) / 1e12
+# US M2
+us_m2 = last_value("M2SL")
 
-# ============================
-# APPEND TO GOOGLE SHEET
-# ============================
-now = datetime.now().strftime("%Y-%m-%d")
-row = [now, float(btc), float(synthetic_m2)]
+# Euro Area M2
+eu_m2 = last_value("MYAGM2EZM196N")
 
-sheet.append_row(row)
+# Japan M2
+jp_m2 = last_value("MYAGM2JPM189S")
 
-print("SUCCESS: Google Sheet updated with BTC + Synthetic M2")
+# China M2
+cn_m2 = last_value("MYAGM2CNM189N")
+
+# ==========================
+# FX RATES (daily) – invert as you specified
+# ==========================
+
+# DEXUSEU: U.S. Dollars per Euro  -> EURUSD = 1 / DEXUSEU
+dexuseu = last_value("DEXUSEU")
+eurusd = 1.0 / dexuseu if dexuseu != 0 else 0.0
+
+# DEXJPUS: Japanese Yen per U.S. Dollar -> JPYUSD = 1 / DEXJPUS
+dexjpus = last_value("DEXJPUS")
+jpyusd = 1.0 / dexjpus if dexjpus != 0 else 0.0
+
+# DEXCHUS: Chinese Yuan per U.S. Dollar -> CNHUSD ≈ 1 / DEXCHUS
+dexchus = last_value("DEXCHUS")
+cnhusd = 1.0 / dexchus if dexchus != 0 else 0.0
+
+# ==========================
+# SYNTHETIC GLOBAL M2 (TRILLIONS)
+# ==========================
+synthetic_m2_trillions = (
+    us_m2
+    + eu_m2 * eurusd
+    + jp_m2 * jpyusd
+    + cn_m2 * cnhusd
+) / 1e12
+
+# ==========================
+# APPEND ROW TO SHEET
+# ==========================
+today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+row = [today_str, btc_close, synthetic_m2_trillions]
+
+# write as normal user-entered values
+sheet.append_row(row, value_input_option="USER_ENTERED")
+
+print("Updated successfully:", row)
